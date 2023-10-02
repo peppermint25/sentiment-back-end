@@ -1,0 +1,6 @@
+Flask
+pymongo
+requests
+beautifulsoup4
+flask_cors
+openai

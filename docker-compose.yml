@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  db:
+    image: mongo
+    volumes:
+      - mongodata:/data/db
+    # ports:
+    #   - 27017:27017
+  app:
+    build: .
+    ports:
+      - 5000:5000
+    volumes:
+      - ./:/app
+    links:
+      - db
+  mongo-client:
+    image: mongoclient/mongoclient
+    ports:
+      - 3000:3000
+    environment:
+      - MONGO_URL=mongodb://db:27017
+
+volumes:
+  mongodata:
