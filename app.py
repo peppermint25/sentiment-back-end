@@ -9,8 +9,12 @@ import logging
 from flask_cors import CORS, cross_origin
 import openai
 import json
+import os
+from api_keys import open_ai_key
 
-openai.api_key = "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"
+# Set OpenAI API key
+
+openai.api_key = open_ai_key
 
 app = Flask(__name__)
 
@@ -99,7 +103,7 @@ def analyze_sentiment(subject ,text):
         # Create the prompt with the variable
         
         prompt = f"""
-        There is a Subject and a article. Analyze the sentiment of how the "subject" is mentioned in the article. Examine each mention if it is Positive/Neutral/Negative, there can multiple of each of those. Avoid having duplicate mentions or mentions of things unrelated to the subject.S If two "sentiment_texts" are really similar and so are their "explanations" you can try and combine the them. There need to be proper explanations, why that piece of text is that sentiment. Provide each analysis in JSON array format with the structure "sentiment" (Capitalize the first letter),  "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)":
+        There is a Subject and a article. Analyze the sentiment of how the "subject" is mentioned in the article. Examine each mention if it is Positive/Neutral/Negative, there can multiple of each of those. It should be just what is written about a subject (For example, if the subject expreses a opinion about something, that shouldn't be on the list, just things about the subject). Avoid having duplicate mentions or mentions of things unrelated to the subject.S If two "sentiment_texts" are really similar and so are their "explanations" you can try and combine the them. There need to be proper explanations, why that piece of text is that sentiment. Provide each analysis in JSON array format with the structure "sentiment" (Capitalize the first letter),  "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)":
 
         Subject: <{article_subject}>
         Article about the subject: "{article_content}"
@@ -139,17 +143,18 @@ def convert_to_json(response):
 def save_to_db(subject, sentiment_data):
     try:
         
+        client = MongoClient("mongodb://db:27017/")
+        database = client.user
+        collection = database.history
+                
         print("Saving to db")
-        # Create a document for each sentiment entry and insert it into the collection
-        for sentiment_entry in sentiment_data:
-            document = {
+
+        document = {
                 'subject': subject,
-                'sentiment': sentiment_entry['sentiment'],
-                'sentiment_text': sentiment_entry['sentiment_text'],
-                'explanation': sentiment_entry['explanation']
-            }
-            print(document)
-            collection.insert_one(document)
+                'sentiments': sentiment_data
+        }
+        print(document)
+        collection.insert_one(document)
         
         return True  # Indicates success
     except Exception as e:
