@@ -1,6 +1,9 @@
 Flask
 pymongo
 requests
+flask_jwt_extended
 beautifulsoup4
 flask_cors
+flask_session
 openai
+bcrypt
