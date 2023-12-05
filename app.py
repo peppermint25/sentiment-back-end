@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 import requests
 import openai
 import json
-import logging
 import os
 import bcrypt
 from api_keys import open_ai_key
@@ -22,8 +21,9 @@ openai.api_key = open_ai_key
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = os.urandom(24)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False
 app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_PERMANENT'] = True
 app.config['SESSION_USE_SIGNER'] = True
 app.config['SECRET_KEY'] = os.urandom(24)
 
@@ -45,17 +45,11 @@ def scrape_url():
         article_url = data.get('article_url')
         article_subject = data.get('article_subject')
         
-        print("user id", user_id)
-        
-        if not article_url:
-            return jsonify({'message': 'URL received, but it was empty.'})
-
-        # Check if article_url is a valid URL before making the request.
-        if not article_url.startswith(('http://', 'https://')):
-            return jsonify({'message': 'Invalid URL format. URL has to be in format https://www.google.com'})
-
         # Scrape title and content from the URL here.
         content = scrape_article(article_url)
+        
+        if content is None:
+            return jsonify({'message': "The provided URL can't get analysed, you have to select the text option and copy and paste the contents of the website"})
         
         # Send the scraped data to the AI model.
         sentiment = analyze_sentiment(article_subject, content)  # Implement this function.
@@ -79,9 +73,6 @@ def scrape_text():
         copied_text = data.get('article_text')
         article_subject = data.get('article_subject')
         
-        if not copied_text:
-            return jsonify({'message': 'Text received, but it was empty.'})
-
         # Send the copied text directly to the AI model.
                 
         sentiment = analyze_sentiment(article_subject ,copied_text)
@@ -147,7 +138,6 @@ def search_history(search_term):
     try:
         user_id = get_jwt_identity()
         documents = collection.find({'user_id': user_id, 'subject': {'$regex': search_term, '$options': 'i'}}).sort('timestamp', -1)
-        # documents = collection.find({'subject': {'$regex': search_term, '$options': 'i'}}).sort('timestamp', -1)
         json_data = json.loads(dumps(documents, default=json_util.default))
         return jsonify(json_data)
     except Exception as e:
@@ -188,11 +178,8 @@ def login():
     password = data.get('password')
     user = userCollection.find_one({'email': email})
 
-    if not email or not password:
-        return jsonify({'message': 'Email or password is empty.'})
-
     if not user:
-        return jsonify({'message': 'No account with this email exists.'})
+        return jsonify({'message': 'Incorrect email or password. Please check your credentials and try again.'})
 
     user_id = str(user['_id'])  # Use the unique ID from the user document
 
@@ -205,7 +192,7 @@ def login():
 
         return jsonify({'token': access_token, 'user_id': user_id})
     else:
-        return jsonify({'message': 'Incorrect password.'})
+        return jsonify({'message': 'Incorrect email or password. Please check your credentials and try again.'})
 
 
 @app.route('/api/auth/logout', methods=['POST'])
@@ -247,31 +234,20 @@ def change_password():
             return jsonify({'message': 'Incorrect password.'})
     except Exception as e:
         return jsonify({'error': str(e)})
-    
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    try:
-        users = userCollection.find()
-        json_data = json.loads(dumps(users, default=json_util.default))
-        return jsonify(json_data)
-    except Exception as e:
-        return jsonify({'error': str(e)})
 
 def scrape_article(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
+
+    response = requests.get(url)
+    response.raise_for_status()    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    article = soup.find('article')
+    if article:
+        content = article.get_text()
+    else:
+        return None
         
-        soup = BeautifulSoup(response.text, 'html.parser')
-        article = soup.find('article')
-        if article:
-            content = article.get_text()
-        else:
-            content = "Unable to scrape"
-            
-        return content
-    except Exception as e:
-        return '', ''
+    return content
+
 
 def analyze_sentiment(subject ,text):
     try:
@@ -282,7 +258,13 @@ def analyze_sentiment(subject ,text):
         # Create the prompt with the variable
         
         prompt = f"""
-        There is a Subject and a article. Analyze the sentiment of how the "Subject" is mentioned in the article. Examine each mention if it is Positive/Neutral/Negative, there can multiple of each of those. It should be strictly about the Subject only, not an opinion expresed by the subject, just strictly about the Subject, don't examine the sentiment of things unrelated to the subject. Avoid having duplicate mentions or mentions of things unrelated to the subject.If two "sentiment_texts" are really similar and so are their "explanations" you can try and combine the them. There need to be proper explanations, why that piece of text is that sentiment. Provide each analysis in JSON array format with the structure "sentiment" (Capitalize the first letter),  "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)" (if there is any kind of error output it in the format "error": "error text"):
+        There is a Subject and a article. Analyze the sentiment of how the "Subject" is mentioned in the article. Examine each mention if it is Positive/Neutral/Negative, there can multiple of each of those.
+        It should be only strictly about the Subject only, not an opinion expresed by the subject, just strictly about the Subject, don't examine the sentiment of things unrelated to the subject.
+        Avoid having duplicate mentions or mentions of things unrelated to the subject.
+        "sentiment_text" must contain the subject.
+        If two "sentiment_texts" are really similar and so are their "explanations" you can try and combine the them. There need to be explanations, why that piece of text is that sentiment.
+        
+        Provide each analysis in JSON array format with the structure "sentiment" (Capitalize the first letter),  "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)" (if there is any kind of error output it in the format "message": "error text"):
 
         Subject: <{article_subject}>
         Article about the subject: "{article_content}"
@@ -317,9 +299,7 @@ def convert_to_json(response):
 
 
 def save_to_db(user_id, subject, sentiment_data, article):
-    try:                
-        print("Saving to db")
-        
+    try:                        
         current_time = datetime.utcnow().timestamp() * 1000  # Convert to milliseconds
         document = {
             'user_id': user_id,
@@ -348,7 +328,6 @@ def delete_by_id(documents):
         return True  # Indicates success
     except Exception as e:
         return str(e)  # Return error message on failure
-    
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

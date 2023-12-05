@@ -3,3 +3,5 @@ api_keys.py
 __pycache__
 flask_session
 .gitignore
+.VSCodeCounter
+test_app.py
