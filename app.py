@@ -49,7 +49,7 @@ def scrape_url():
         content = scrape_article(article_url)
         
         if content is None:
-            return jsonify({'message': "The provided URL can't get analysed, you have to select the text option and copy and paste the contents of the website"})
+            return jsonify({'message': "The provided URL can't get analysed, you have to select the text option and copy and paste the contents of the website, and use the text analysis."})
         
         # Send the scraped data to the AI model.
         sentiment = analyze_sentiment(article_subject, content)  # Implement this function.
@@ -219,14 +219,14 @@ def change_password():
         old_password = data.get('old_password')
         new_password = data.get('new_password')
         
-        if not old_password or not new_password:
-            return jsonify({'message': 'Old or new password is empty.'})
-        
         user = userCollection.find_one({'_id': ObjectId(user_id)})
         
         hashed_password = user['password'].encode('utf-8')
         if bcrypt.checkpw(old_password.encode('utf-8'), hashed_password):
-            # If the password is correct, create and return an access token
+            if old_password == new_password:
+                return jsonify({'message': 'New password cannot be the same as the old password.'})
+            
+            # If the password is correct and not the same as the old one, create and return an access token
             hashedPassword = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
             userCollection.update_one({'_id': ObjectId(user_id)}, {'$set': {'password': hashedPassword.decode('utf-8')}})
             return jsonify({'message': 'Password changed successfully.'})
