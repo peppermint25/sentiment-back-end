@@ -4,8 +4,6 @@ services:
     image: mongo
     volumes:
       - mongodata:/data/db
-    # ports:
-    #   - 27017:27017
   app:
     build: .
     ports:

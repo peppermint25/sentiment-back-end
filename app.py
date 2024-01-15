@@ -52,7 +52,7 @@ def scrape_url():
             return jsonify({'message': "The provided URL can't get analysed, you have to select the text option and copy and paste the contents of the website, and use the text analysis."})
         
         # Send the scraped data to the AI model.
-        sentiment = analyze_sentiment(article_subject, content)  # Implement this function.
+        sentiment = analyze_sentiment(article_subject, content)
         
         if sentiment is None:
             return jsonify({'message': 'Error while analyzing sentiment.'})
@@ -73,7 +73,7 @@ def scrape_text():
         copied_text = data.get('article_text')
         article_subject = data.get('article_subject')
         
-        # Send the copied text directly to the AI model.
+        # Send the text directly to the AI model.
                 
         sentiment = analyze_sentiment(article_subject ,copied_text)
         
@@ -93,9 +93,7 @@ def scrape_text():
 def get_history():
     try:
         user_id = get_jwt_identity()
-        print("user id", user_id)
         documents = collection.find({'user_id': user_id}).sort('timestamp', -1)
-        # documents = collection.find().sort('timestamp', -1)
         json_data = json.loads(dumps(documents, default=json_util.default))
         return jsonify(json_data)
     except Exception as e:
@@ -116,7 +114,6 @@ def get_document(document_id):
 @jwt_required()
 def delete_document(document_id):
     try:
-        # Delete the document from the collection
         delete_by_id(document_id)
         return jsonify({'message': 'Document deleted successfully.'})
     except Exception as e:
@@ -126,9 +123,9 @@ def delete_document(document_id):
 @jwt_required()
 def delete_all():
     try:
-        # Delete the document from the collection
-        collection.delete_many({})
-        return jsonify({'message': 'All documents deleted successfully.'})
+        user_id = get_jwt_identity()
+        collection.delete_many({'user_id': user_id})
+        return jsonify({'message': 'User history deleted successfully.'})
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -142,7 +139,7 @@ def search_history(search_term):
         return jsonify(json_data)
     except Exception as e:
         return jsonify({'error': str(e)})
-   
+
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     try:
@@ -182,8 +179,6 @@ def login():
         return jsonify({'message': 'Incorrect email or password. Please check your credentials and try again.'})
 
     user_id = str(user['_id'])  # Use the unique ID from the user document
-
-    print('user ' + user_id)
 
     hashed_password = user['password'].encode('utf-8')
     if bcrypt.checkpw(password.encode('utf-8'), hashed_password):
@@ -243,37 +238,34 @@ def scrape_article(url):
     article = soup.find('article')
     if article:
         content = article.get_text()
+        return content
     else:
         return None
-        
-    return content
 
 
 def analyze_sentiment(subject ,text):
     try:
-        # Define your article content as a variable
         article_subject = subject
         article_content = text
-
-        # Create the prompt with the variable
         
         prompt = f"""
         There is a Subject and a article. Analyze the sentiment of how the "Subject" is mentioned in the article. Examine each mention if it is Positive/Neutral/Negative, there can multiple of each of those.
         It should be only strictly about the Subject only, not an opinion expresed by the subject, just strictly about the Subject, don't examine the sentiment of things unrelated to the subject.
         Avoid having duplicate mentions or mentions of things unrelated to the subject.
-        "sentiment_text" must contain the subject.
+        "sentiment_text" must be striclly about the "subject" and not subjects around the subject. "sentiment_text" must be directed at the subject.
         If two "sentiment_texts" are really similar and so are their "explanations" you can try and combine the them. There need to be explanations, why that piece of text is that sentiment.
         
-        Provide each analysis in JSON array format with the structure "sentiment" (Capitalize the first letter),  "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)" (if there is any kind of error output it in the format "message": "error text"):
+        Provide each analysis in JSON array format (without any comment sybols or specifying that it is json) with the structure "sentiment" (Capitalize the first letter), 
+        "sentiment_text (First letter of the sentance is uppercase, 4 to 12 words)," and "explanation (Explain why it is that sentiment, not just saying that it is that sentiment, 
+        don't use the words "this mention" or similar, just exlain why the "sentiment_text" is that sentiment using info from the rest of the article or from what you know)" 
+        (if there is any kind of error output it in the format "message": "error text"):
 
         Subject: <{article_subject}>
         Article about the subject: "{article_content}"
         """
         
         response = get_completion(prompt)
-        
-        print("response", response)
-                
+                        
         json_response = convert_to_json(response)
 
         return json_response 
@@ -281,7 +273,7 @@ def analyze_sentiment(subject ,text):
     except Exception as e:
         return str(e)
 
-def get_completion(prompt, model="gpt-3.5-turbo"):
+def get_completion(prompt, model="gpt-4-1106-preview"):
     messages = [{"role": "user", "content": prompt}]
     response = openai.ChatCompletion.create(
         model=model,
@@ -300,7 +292,7 @@ def convert_to_json(response):
 
 def save_to_db(user_id, subject, sentiment_data, article):
     try:                        
-        current_time = datetime.utcnow().timestamp() * 1000  # Convert to milliseconds
+        current_time = datetime.utcnow().timestamp() * 1000
         document = {
             'user_id': user_id,
             'subject': subject,
@@ -309,25 +301,16 @@ def save_to_db(user_id, subject, sentiment_data, article):
             'article': article
         }
         collection.insert_one(document)
-        return True  # Indicates success
-    except Exception as e:
-        return str(e)  # Return error message on failure
-
-def get_history():
-    try:
-        documents = collection.find().sort('timestamp', -1)
-        json_data = json.loads(dumps(documents, default=json_util.default))
-        return jsonify(json_data)
+        return True
     except Exception as e:
         return str(e)
     
 def delete_by_id(documents):
     try:
-        # Delete the document from the collection
         collection.delete_one({'_id': ObjectId(documents)})
-        return True  # Indicates success
+        return True
     except Exception as e:
-        return str(e)  # Return error message on failure
+        return str(e)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
